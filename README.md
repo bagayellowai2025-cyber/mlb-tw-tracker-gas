@@ -4,6 +4,7 @@
 
 <img width="1226" height="691" alt="image" src="https://github.com/user-attachments/assets/22d722bd-d70d-474c-b34c-b0ad72a36296" />
 
+
 此專案完全採用 **Vibecoding** 模式，透過高效的脈絡對話引導，快速迭代出高穩定度、具備例外攔截機制與自動防錯糾錯（如 Email 格式自動修正）的自動化小工具。
 
 <img width="854" height="480" alt="球員數據" src="https://github.com/user-attachments/assets/dba3d21c-111d-4080-bd56-b0a4fdd59ac2" />
