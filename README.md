@@ -10,6 +10,8 @@
 
 <img width="854" height="480" alt="球員狀態" src="https://github.com/user-attachments/assets/f70c1b57-3dbe-4444-be25-b915446fbce9" />
 
+<img width="897" height="589" alt="球員報告" src="https://github.com/user-attachments/assets/f3229ce8-ea53-4c59-bfec-6ecba3a8d17b" />
+
 
 ## 🚀 核心功能特色
 
