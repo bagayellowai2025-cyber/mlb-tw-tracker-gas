@@ -2,7 +2,14 @@
 
 這是一個基於 Google Apps Script (GAS) 開發的自動化管理系統，旨在將 Google 試算表與 MLB / MiLB 官方數據 API 進行連動。系統能自動爬取並統計旅美台灣球員的最新狀態、近期異動與近五日出賽數據變化，並具備雙核取方塊的「郵件寄送管理中心」，可定時或手動將精美的 HTML 戰報群發給指定訂閱用戶。
 
+<img width="1226" height="691" alt="image" src="https://github.com/user-attachments/assets/22d722bd-d70d-474c-b34c-b0ad72a36296" />
+
 此專案完全採用 **Vibecoding** 模式，透過高效的脈絡對話引導，快速迭代出高穩定度、具備例外攔截機制與自動防錯糾錯（如 Email 格式自動修正）的自動化小工具。
+
+<img width="854" height="480" alt="球員數據" src="https://github.com/user-attachments/assets/dba3d21c-111d-4080-bd56-b0a4fdd59ac2" />
+
+<img width="854" height="480" alt="球員狀態" src="https://github.com/user-attachments/assets/f70c1b57-3dbe-4444-be25-b915446fbce9" />
+
 
 ## 🚀 核心功能特色
 
