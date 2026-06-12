@@ -398,16 +398,18 @@ function generateHtmlReport(ss) {
       });
     });
 
-    var colDeltaG = deltaCols["G"] || -1;
-    if (colDeltaG !== -1 && sheet.getLastRow() > 1) {
+    var checkField = (config.sheetName === "Pitcher") ? "G" : "AB";
+    var colDeltaCheck = deltaCols[checkField] || -1;
+    
+    if (colDeltaCheck !== -1 && sheet.getLastRow() > 1) {
       var dataRows = sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn()).getValues();
       var activePlayersHtml = "";
 
       for (var i = 0; i < dataRows.length; i++) {
         var rowData = dataRows[i];
-        var deltaGVal = String(rowData[colDeltaG - 1]).trim();
+        var deltaCheckVal = String(rowData[colDeltaCheck - 1]).trim();
         
-        if (deltaGVal !== "No Game" && deltaGVal !== "累積中..." && deltaGVal !== "—" && deltaGVal !== "") {
+        if (deltaCheckVal !== "No Game" && deltaCheckVal !== "累積中..." && deltaCheckVal !== "—" && deltaCheckVal !== "") {
           totalPlayCount++;
           var pName = colName > 0 ? rowData[colName - 1] : "—";
           var pEng = colEng > 0 ? rowData[colEng - 1] : "—";
@@ -466,18 +468,25 @@ function generateHtmlReport(ss) {
   return html;
 }
 
+/**
+ * 💡 修正點：信件生成不再疊加符號，直接讀取已美化完成的字串
+ */
 function getEmailDeltaCellHtml(field, deltaValStr) {
   if (!deltaValStr || deltaValStr === "No Game" || deltaValStr === "累積中..." || deltaValStr === "—") {
     return '<td style="color: #aaa; font-size: 12px;">' + (deltaValStr || "—") + '</td>';
   }
-  var delta = parseFloat(deltaValStr);
+  
+  // 濾除符號抽取純數字，用以辨別表格背景高亮顏色
+  var cleanStr = deltaValStr.replace(/[^0-9.-]/g, "");
+  var delta = parseFloat(cleanStr);
+  
   if (isNaN(delta) || delta === 0) return '<td style="color: #5f6368;">' + deltaValStr + '</td>';
-  var displayStr = (delta > 0 && !["AVG", "OBP", "OPS", "ERA", "WHIP"].includes(field)) ? "+" + deltaValStr : deltaValStr;
+  
   var isReverseGood = ["L", "ERA", "WHIP"].includes(field); 
   var isGood = isReverseGood ? (delta < 0) : (delta > 0);
   var bgColor = isGood ? "#e6f4ea" : "#fef7e0"; 
   var textColor = isGood ? "#0d652d" : "#b06000"; 
-  return '<td style="background-color: ' + bgColor + '; color: ' + textColor + '; font-weight: bold;">' + displayStr + '</td>';
+  return '<td style="background-color: ' + bgColor + '; color: ' + textColor + '; font-weight: bold;">' + deltaValStr + '</td>';
 }
 
 /**
@@ -563,11 +572,23 @@ function processStatSheet(sheet, type) {
       var oldStats = getStatsFromHistory(ss, engName, type, todayStr);
 
       var hasPlayed = true;
-      if (oldStats && stats["G"] !== "今年賽季尚無出賽紀錄" && stats["G"] !== "—") {
-        var currentG = parseInt(stats["G"]) || 0;
-        var oldG = parseInt(oldStats["G"]) || 0;
-        if (currentG - oldG === 0) hasPlayed = false;
-      } else if (!oldStats) { hasPlayed = null; }
+      if (oldStats) {
+        if (type === "Pitcher") {
+          if (stats["G"] !== "今年賽季尚無出賽紀錄" && stats["G"] !== "—") {
+            var currentG = parseInt(stats["G"]) || 0;
+            var oldG = parseInt(oldStats["G"]) || 0;
+            if (currentG - oldG === 0) hasPlayed = false;
+          }
+        } else if (type === "Batter") {
+          if (stats["AB"] !== "今年賽季尚無出賽紀錄" && stats["AB"] !== "—") {
+            var currentAB = parseInt(stats["AB"]) || 0;
+            var oldAB = parseInt(oldStats["AB"]) || 0;
+            if (currentAB - oldAB === 0) hasPlayed = false;
+          }
+        }
+      } else { 
+        hasPlayed = null; 
+      }
 
       for (var field in deltaCols) {
         var deltaColIdx = deltaCols[field];
@@ -599,14 +620,38 @@ function isWithinFiveDays(dateStr) {
   } catch (e) { return false; }
 }
 
+/**
+ * 💡 修正點：集中格式化邏輯。絕對數字加單一正號，百分比數值（WHIP, AVG, OBP, OPS）計算增減百分比。
+ */
 function calculateDelta(field, currVal, oldVal) {
+  if (currVal === "今年賽季尚無出賽紀錄" || currVal === "—" || oldVal === "今年賽季尚無出賽紀錄" || oldVal === "—") return "—";
   if (field === "IP") return calcIPDiff(currVal, oldVal);
+  
   var c = parseFloat(currVal); var o = parseFloat(oldVal);
   if (isNaN(c) || isNaN(o)) return "—";
+  
+  // 📈 百分比增減率分支：針對率類指標（WHIP, AVG, OBP, OPS）
+  if (["WHIP", "AVG", "OBP", "OPS"].includes(field)) {
+    if (o === 0) return "0%";
+    var pctChange = ((c - o) / o) * 100;
+    var roundedPct = Math.round(pctChange);
+    if (roundedPct > 0) return "+" + roundedPct + "%";
+    if (roundedPct < 0) return roundedPct + "%"; // 負數自帶減號
+    return "0%";
+  }
+  
+  // 🔢 絕對數字增減分支：ERA 獨立取兩位，其餘取整數
   var diff = c - o;
-  if (["AVG", "OBP", "OPS"].includes(field)) { return diff.toFixed(3); } 
-  else if (["ERA", "WHIP"].includes(field)) { return diff.toFixed(2); } 
-  else { return Math.round(diff); }
+  if (field === "ERA") {
+    if (diff > 0) return "+" + diff.toFixed(2);
+    if (diff < 0) return diff.toFixed(2);
+    return "0.00";
+  }
+  
+  var intDiff = Math.round(diff);
+  if (intDiff > 0) return "+" + intDiff;
+  if (intDiff < 0) return String(intDiff);
+  return "0";
 }
 
 function calcIPDiff(curr, old) {
@@ -618,18 +663,29 @@ function calcIPDiff(curr, old) {
   let diffOuts = toOuts(curr) - toOuts(old);
   let sign = diffOuts < 0 ? -1 : 1; let absOuts = Math.abs(diffOuts);
   let fullDiff = Math.floor(absOuts / 3); let partDiff = absOuts % 3;
-  return (parseFloat(fullDiff + "." + partDiff) * sign).toFixed(1);
+  var val = (parseFloat(fullDiff + "." + partDiff) * sign).toFixed(1);
+  
+  var num = parseFloat(val);
+  if (num > 0) return "+" + val;
+  if (num < 0) return val;
+  return "0.0";
 }
 
+/**
+ * 💡 修正點：直接套用字串，不進行重複字串疊加
+ */
 function applyDeltaColor(sheet, row, col, field, deltaValStr) {
   var cell = sheet.getRange(row, col);
   if (deltaValStr === "No Game" || deltaValStr === "累積中..." || deltaValStr === "—") {
     cell.setValue(deltaValStr).setBackground(null); return;
   }
-  var delta = parseFloat(deltaValStr);
-  if (isNaN(delta) || delta === 0) { cell.setValue(deltaValStr).setBackground(null); return; }
-  var displayStr = (delta > 0 && !["AVG", "OBP", "OPS", "ERA", "WHIP"].includes(field)) ? "+" + deltaValStr : deltaValStr;
-  cell.setValue(displayStr);
+  
+  cell.setValue(deltaValStr);
+  
+  var cleanStr = deltaValStr.replace(/[^0-9.-]/g, "");
+  var delta = parseFloat(cleanStr);
+  if (isNaN(delta) || delta === 0) { cell.setBackground(null); return; }
+  
   var isReverseGood = ["L", "ERA", "WHIP"].includes(field); 
   var isGood = isReverseGood ? (delta < 0) : (delta > 0);
   if (isGood) { cell.setBackground("#b7e1cd"); } else { cell.setBackground("#fce8b2"); }
@@ -644,14 +700,10 @@ function initHistorySheet(ss) {
   }
 }
 
-/**
- * 修正 Bug 2：防止日期格式比對失敗而瘋狂重複寫入同一天資料
- */
 function saveToHistorySheet(ss, todayStr, engName, type, statsObj) {
   var sheet = ss.getSheetByName("Stats_History"); if (!sheet) return;
   var data = sheet.getDataRange().getValues();
   for (var i = data.length - 1; i >= 1; i--) {
-    // 確保抓出來的日期物件被正確轉成字串，再進行比對
     var rowDate = data[i][0];
     var rowDateStr = (rowDate instanceof Date) ? Utilities.formatDate(rowDate, Session.getScriptTimeZone(), "yyyy-MM-dd") : String(rowDate).trim();
     
@@ -662,27 +714,32 @@ function saveToHistorySheet(ss, todayStr, engName, type, statsObj) {
   sheet.appendRow([todayStr, engName, type, JSON.stringify(statsObj)]);
 }
 
-/**
- * 修正 Bug 1：將 minDiff 設定為 Infinity 才能正確運作毫秒差距比對
- */
 function getStatsFromHistory(ss, engName, type, todayStr) {
   var sheet = ss.getSheetByName("Stats_History"); if (!sheet) return null;
   var data = sheet.getDataRange().getValues(); 
-  var todayDate = new Date(todayStr);
   
-  var targetOldest = new Date(todayDate.getTime() - 5 * 24 * 60 * 60 * 1000);
-  var targetNewest = new Date(todayDate.getTime() - 1 * 24 * 60 * 60 * 1000);
+  var parts = todayStr.split('-');
+  var todayMidnight = new Date(parts[0], parts[1] - 1, parts[2]); 
+  
   var bestRecord = null; 
-  // 修正：必須使用 Infinity，因為一天的毫秒數高達 86,400,000，原先的 999999 太小了
-  var minDiff = Infinity; 
+  var maxDiffDays = -1; 
 
   for (var i = data.length - 1; i >= 1; i--) {
     if (data[i][1] === engName && data[i][2] === type) {
-      var recordDate = new Date(data[i][0]);
-      if (recordDate >= targetOldest && recordDate <= targetNewest) {
-        var diff = Math.abs(recordDate.getTime() - targetOldest.getTime());
-        if (diff < minDiff) { 
-          minDiff = diff; 
+      var rowDate = data[i][0];
+      var rowDateStr = (rowDate instanceof Date) ? Utilities.formatDate(rowDate, Session.getScriptTimeZone(), "yyyy-MM-dd") : String(rowDate).trim();
+      
+      if (rowDateStr === todayStr) continue;
+      
+      var rParts = rowDateStr.split('-');
+      var recordMidnight = new Date(rParts[0], rParts[1] - 1, rParts[2]);
+      
+      var diffTime = todayMidnight.getTime() - recordMidnight.getTime();
+      var diffDays = Math.round(diffTime / (1000 * 3600 * 24)); 
+      
+      if (diffDays >= 1 && diffDays <= 5) {
+        if (diffDays > maxDiffDays) { 
+          maxDiffDays = diffDays; 
           bestRecord = data[i][3]; 
         }
       }
@@ -806,7 +863,6 @@ function buildStatsObject(type, tds) {
   if (type === "Pitcher") { return { "W": tds[1], "L": tds[2], "ERA": tds[3], "G": tds[4], "GS": tds[5], "SV": tds[6], "IP": tds[7], "SO": tds[8], "WHIP": tds[9] }; } 
   else { return { "AB": tds[1], "R": tds[2], "H": tds[3], "HR": tds[4], "RBI": tds[5], "SB": tds[6], "AVG": tds[7], "OBP": tds[8], "OPS": tds[9] }; }
 }
-
 
 function fetchPlayerIdFromAPI(englishName) {
   var url = "https://statsapi.mlb.com/api/v1/people/search?names=" + encodeURIComponent(englishName) + "&sportIds=1,11,12,13,14,16,21";
