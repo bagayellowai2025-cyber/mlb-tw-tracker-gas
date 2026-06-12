@@ -402,7 +402,8 @@ function generateHtmlReport(ss) {
     var colDeltaCheck = deltaCols[checkField] || -1;
     
     if (colDeltaCheck !== -1 && sheet.getLastRow() > 1) {
-      var dataRows = sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn()).getValues();
+      // 💡 關鍵修正點：改用 getDisplayValues() 抓取「肉眼可見的格式化純字串」，避免被 Google Sheets 底層轉換數字干擾
+      var dataRows = sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn()).getDisplayValues();
       var activePlayersHtml = "";
 
       for (var i = 0; i < dataRows.length; i++) {
@@ -468,25 +469,32 @@ function generateHtmlReport(ss) {
   return html;
 }
 
-/**
- * 💡 修正點：信件生成不再疊加符號，直接讀取已美化完成的字串
- */
 function getEmailDeltaCellHtml(field, deltaValStr) {
   if (!deltaValStr || deltaValStr === "No Game" || deltaValStr === "累積中..." || deltaValStr === "—") {
     return '<td style="color: #aaa; font-size: 12px;">' + (deltaValStr || "—") + '</td>';
   }
   
-  // 濾除符號抽取純數字，用以辨別表格背景高亮顏色
-  var cleanStr = deltaValStr.replace(/[^0-9.-]/g, "");
-  var delta = parseFloat(cleanStr);
+  var delta = parseFloat(deltaValStr);
+  if (isNaN(delta)) {
+    return '<td style="color: #5f6368;">' + deltaValStr + '</td>';
+  }
   
-  if (isNaN(delta) || delta === 0) return '<td style="color: #5f6368;">' + deltaValStr + '</td>';
+  var displayStr = deltaValStr;
+  
+  if (["G", "GS", "AB", "IP"].includes(field)) {
+    return '<td style="color: #333;">' + displayStr + '</td>';
+  }
+  
+  // 如果變化值為 0 或 0%，直接顯示純色字不套背景色
+  if (delta === 0) {
+    return '<td style="color: #5f6368;">' + displayStr + '</td>';
+  }
   
   var isReverseGood = ["L", "ERA", "WHIP"].includes(field); 
   var isGood = isReverseGood ? (delta < 0) : (delta > 0);
   var bgColor = isGood ? "#e6f4ea" : "#fef7e0"; 
   var textColor = isGood ? "#0d652d" : "#b06000"; 
-  return '<td style="background-color: ' + bgColor + '; color: ' + textColor + '; font-weight: bold;">' + deltaValStr + '</td>';
+  return '<td style="background-color: ' + bgColor + '; color: ' + textColor + '; font-weight: bold;">' + displayStr + '</td>';
 }
 
 /**
@@ -620,38 +628,26 @@ function isWithinFiveDays(dateStr) {
   } catch (e) { return false; }
 }
 
-/**
- * 💡 修正點：集中格式化邏輯。絕對數字加單一正號，百分比數值（WHIP, AVG, OBP, OPS）計算增減百分比。
- */
 function calculateDelta(field, currVal, oldVal) {
-  if (currVal === "今年賽季尚無出賽紀錄" || currVal === "—" || oldVal === "今年賽季尚無出賽紀錄" || oldVal === "—") return "—";
   if (field === "IP") return calcIPDiff(currVal, oldVal);
   
   var c = parseFloat(currVal); var o = parseFloat(oldVal);
   if (isNaN(c) || isNaN(o)) return "—";
   
-  // 📈 百分比增減率分支：針對率類指標（WHIP, AVG, OBP, OPS）
+  // 1. 百分比變化指標處理 (WHIP, AVG, OBP, OPS)
   if (["WHIP", "AVG", "OBP", "OPS"].includes(field)) {
     if (o === 0) return "0%";
     var pctChange = ((c - o) / o) * 100;
-    var roundedPct = Math.round(pctChange);
-    if (roundedPct > 0) return "+" + roundedPct + "%";
-    if (roundedPct < 0) return roundedPct + "%"; // 負數自帶減號
-    return "0%";
+    return Math.round(pctChange) + "%"; 
   }
   
-  // 🔢 絕對數字增減分支：ERA 獨立取兩位，其餘取整數
+  // 2. 絕對數字指標處理 (W, L, ERA, G, GS, SV, SO, AB, R, H, HR, RBI, SB)
   var diff = c - o;
   if (field === "ERA") {
-    if (diff > 0) return "+" + diff.toFixed(2);
-    if (diff < 0) return diff.toFixed(2);
-    return "0.00";
+    return diff.toFixed(2);
+  } else {
+    return String(Math.round(diff));
   }
-  
-  var intDiff = Math.round(diff);
-  if (intDiff > 0) return "+" + intDiff;
-  if (intDiff < 0) return String(intDiff);
-  return "0";
 }
 
 function calcIPDiff(curr, old) {
@@ -663,31 +659,45 @@ function calcIPDiff(curr, old) {
   let diffOuts = toOuts(curr) - toOuts(old);
   let sign = diffOuts < 0 ? -1 : 1; let absOuts = Math.abs(diffOuts);
   let fullDiff = Math.floor(absOuts / 3); let partDiff = absOuts % 3;
-  var val = (parseFloat(fullDiff + "." + partDiff) * sign).toFixed(1);
-  
-  var num = parseFloat(val);
-  if (num > 0) return "+" + val;
-  if (num < 0) return val;
-  return "0.0";
+  return (parseFloat(fullDiff + "." + partDiff) * sign).toFixed(1);
 }
 
 /**
- * 💡 修正點：直接套用字串，不進行重複字串疊加
+ * 💡 關鍵修正點：強制將儲存格設定為純文字格式
  */
 function applyDeltaColor(sheet, row, col, field, deltaValStr) {
   var cell = sheet.getRange(row, col);
+
+  // 強制設為純文字，拒絕 Google Sheets 的自動格式化或小數轉換
+  cell.setNumberFormat('@');
+
   if (deltaValStr === "No Game" || deltaValStr === "累積中..." || deltaValStr === "—") {
     cell.setValue(deltaValStr).setBackground(null); return;
   }
   
-  cell.setValue(deltaValStr);
+  var numValue = parseFloat(deltaValStr);
+  if (isNaN(numValue)) { 
+    cell.setValue(deltaValStr).setBackground(null); return; 
+  }
   
-  var cleanStr = deltaValStr.replace(/[^0-9.-]/g, "");
-  var delta = parseFloat(cleanStr);
-  if (isNaN(delta) || delta === 0) { cell.setBackground(null); return; }
+  var displayStr = deltaValStr;
+  if (numValue > 0 && !deltaValStr.startsWith("+")) {
+    displayStr = "+" + deltaValStr;
+  }
+  
+  cell.setValue(displayStr);
+  
+  if (["G", "GS", "AB", "IP"].includes(field)) {
+    cell.setBackground(null); return;
+  }
+  
+  // 變動剛好為零時，不填滿底色
+  if (numValue === 0) {
+    cell.setBackground(null); return;
+  }
   
   var isReverseGood = ["L", "ERA", "WHIP"].includes(field); 
-  var isGood = isReverseGood ? (delta < 0) : (delta > 0);
+  var isGood = isReverseGood ? (numValue < 0) : (numValue > 0);
   if (isGood) { cell.setBackground("#b7e1cd"); } else { cell.setBackground("#fce8b2"); }
 }
 
@@ -870,7 +880,7 @@ function fetchPlayerIdFromAPI(englishName) {
     var response = UrlFetchApp.fetch(url, { muteHttpExceptions: true }); var json = JSON.parse(response.getContentText());
     if (response.getResponseCode() === 200 && json.people && json.people.length > 0) {
       var player = json.people[0]; var formattedName = englishName.toLowerCase().replace(/[^a-z0-9\s-]/g, '').replace(/[\s_]+/g, '-');
-      return { id: player.id, milbUrl: "https://www.milb.com/player/" + formattedName + "-" + player.id, mlbUrl: "https://www.mlb.com/player/" + formattedName + "-" + player.id };
+      return { id: player.id, milbUrl: "https://www.milb.com/player/" + formattedName + "-" + player.id, mlbUrl: "https://www.milb.com/player/" + formattedName + "-" + player.id };
     }
   } catch (e) {} return null;
 }
