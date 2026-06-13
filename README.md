@@ -1,17 +1,17 @@
 # ⚾ MLB 台灣球員動態與賽季數據自動化追蹤系統 (GAS)
 
-這是一個基於 Google Apps Script (GAS) 開發的自動化管理系統，旨在將 Google 試算表與 MLB / MiLB 官方數據 API 進行連動。系統能自動爬取並統計旅美台灣球員的最新狀態、近期異動與近五日出賽數據變化，並具備雙核取方塊的「郵件寄送管理中心」，可定時或手動將精美的 HTML 戰報群發給指定訂閱用戶。
+這是一個基於 Google Apps Script (GAS) 開發的自動化管理系統，旨在將 Google 試算表與 MLB / MiLB 官方數據 API 進行連動。
 
-<img width="1226" height="691" alt="image" src="https://github.com/user-attachments/assets/22d722bd-d70d-474c-b34c-b0ad72a36296" />
+涵蓋所有大聯盟與小聯盟球員，
+系統能自動爬取並統計旅美台灣球員的最新狀態、近期異動與近五日出賽數據變化，並具備雙核取方塊的「郵件寄送管理中心」，可定時或手動將精美的 HTML 戰報群發給指定訂閱用戶。
+
+<img width="1580" height="626" alt="image" src="https://github.com/user-attachments/assets/af5af2db-7351-4f73-9eda-f739566da852" />
+
+
+<img width="800" height="614" alt="2026-06-1317 08 45-ezgif com-video-to-gif-converter" src="https://github.com/user-attachments/assets/45328b2c-c5c3-4b82-8901-f64df6a2c1e3" />
 
 
 此專案完全採用 **Vibecoding** 模式，透過高效的脈絡對話引導，快速迭代出高穩定度、具備例外攔截機制與自動防錯糾錯（如 Email 格式自動修正）的自動化小工具。
-
-<img width="854" height="480" alt="球員數據" src="https://github.com/user-attachments/assets/dba3d21c-111d-4080-bd56-b0a4fdd59ac2" />
-
-<img width="854" height="480" alt="球員狀態" src="https://github.com/user-attachments/assets/f70c1b57-3dbe-4444-be25-b915446fbce9" />
-
-<img width="897" height="589" alt="球員報告" src="https://github.com/user-attachments/assets/f3229ce8-ea53-4c59-bfec-6ecba3a8d17b" />
 
 
 ## 🚀 核心功能特色
@@ -39,6 +39,10 @@
 * **`Batter`**：打者數據頁。基礎與 Delta 數據欄位包含 `AB`, `R`, `H`, `HR`, `RBI`, `SB`, `AVG`, `OBP`, `OPS`。
 * **`郵件寄送管理中心`**：(可透過功能選單一鍵初始化建置)
 * **`Stats_History`** / **`Log`**：系統底層自動初始化，用於暫存歷史數據以計算 Delta 值及紀錄運行日誌（可手動隱藏）。
+
+<img width="854" height="480" alt="球員數據" src="https://github.com/user-attachments/assets/dba3d21c-111d-4080-bd56-b0a4fdd59ac2" />
+
+<img width="854" height="480" alt="球員狀態" src="https://github.com/user-attachments/assets/f70c1b57-3dbe-4444-be25-b915446fbce9" />
 
 ## 🛠️ 使用與安裝教學
 
