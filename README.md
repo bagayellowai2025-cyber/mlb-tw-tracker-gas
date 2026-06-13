@@ -11,7 +11,11 @@
 <img width="800" height="614" alt="2026-06-1317 08 45-ezgif com-video-to-gif-converter" src="https://github.com/user-attachments/assets/45328b2c-c5c3-4b82-8901-f64df6a2c1e3" />
 
 
-此專案完全採用 **Vibecoding** 模式，透過高效的脈絡對話引導，快速迭代出高穩定度、具備例外攔截機制與自動防錯糾錯（如 Email 格式自動修正）的自動化小工具。
+
+此專案完全採用 **Vibecoding** 模式，
+
+
+透過高效的脈絡對話引導，快速迭代出高穩定度、具備例外攔截機制與自動防錯糾錯（如 Email 格式自動修正）的自動化小工具。
 
 
 ## 🚀 核心功能特色
