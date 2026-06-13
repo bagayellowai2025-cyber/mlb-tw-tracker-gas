@@ -31,31 +31,35 @@ function performDailyAutomation(isDaily) {
   initHistorySheet(ss);
   initEmailCenterSheet(ss); 
   
-  writeLog("INFO", "=== 開始執行 [MLB自動更新與發信總排程] (模式: " + (targetDaily ? "每日自動" : "手動測試") + ") ===");
+  writeLog("總排程", "START", "=== 開始執行 [MLB自動更新與發信總排程] (模式: " + (targetDaily ? "每日自動" : "手動測試") + ") ===");
   
   // 1. 更新 台灣球員清單 (基本資訊與異動)
   if (ss.getSheetByName("台灣球員清單")) {
-    executeCoreUpdate("台灣球員清單", "ALL", "台灣球員清單-基本資訊");
+    executeCoreUpdate("台灣球員清單", "ALL", "基本資訊更新");
   } else {
-    writeLog("WARN", "找不到「台灣球員清單」工作表，跳過基本資訊更新。");
+    writeLog("總排程", "WARN", "找不到「台灣球員清單」工作表，跳過基本資訊更新。");
   }
   
   // 2. 更新 投手賽季數據
   var pitcherSheet = ss.getSheetByName("Pitcher");
   if (pitcherSheet) {
     processStatSheet(pitcherSheet, "Pitcher");
+  } else {
+    writeLog("總排程", "WARN", "找不到「Pitcher」工作表，跳過投手數據更新。");
   }
   
   // 3. 更新 打者賽季數據
   var batterSheet = ss.getSheetByName("Batter");
   if (batterSheet) {
     processStatSheet(batterSheet, "Batter");
+  } else {
+    writeLog("總排程", "WARN", "找不到「Batter」工作表，跳過打者數據更新。");
   }
   
   // 4. 依據模式撈取對應名單並發送電子郵件
   sendSummaryEmail(ss, targetDaily);
   
-  writeLog("INFO", "=== [MLB自動更新與發信總排程] 執行完畢 ===");
+  writeLog("總排程", "SUCCESS", "=== [MLB自動更新與發信總排程] 執行完畢 ===");
 }
 
 /**
@@ -65,6 +69,7 @@ function sendTestEmailAction() {
   var ui = SpreadsheetApp.getUi();
   var response = ui.alert("確認執行", "這將會花費1~3分鐘更新所有球員資料，並在完成後立即發送摘要郵件給有勾選【⚡ 立即寄送】的用戶。\n發送成功後，系統會自動取消勾選其「立即寄送」欄位。是否繼續？", ui.ButtonSet.YES_NO);
   if (response == ui.Button.YES) {
+    writeLog("手動操作", "START", "啟動 [寄送測試信] 程序");
     performDailyAutomation(false);
     ui.alert("⚾️ 測試信更新與發送程序已執行完畢！詳細進程請見 「Log」 工作表與您的管理員信箱。");
   }
@@ -120,9 +125,10 @@ function onEdit(e) {
 // ==========================================================
 
 function sendSummaryEmail(ss, isDaily) {
+  writeLog("郵件發送", "START", "開始整理郵件名單與擷取摘要");
   var recipientSheet = ss.getSheetByName("郵件寄送管理中心");
   if (!recipientSheet) {
-    writeLog("ERROR", "未找到「郵件寄送管理中心」工作表，取消發信程序。");
+    writeLog("郵件發送", "ERROR", "未找到「郵件寄送管理中心」工作表，取消發信程序。");
     return;
   }
   
@@ -166,7 +172,7 @@ function sendSummaryEmail(ss, isDaily) {
 
   if (activeSendEmails.length === 0 && skippedWithErrorRecipients.length === 0) {
     if (adminEmail) {
-      writeLog("INFO", "未偵測到收件人，系統自動切換為 [管理者個人追蹤模式] 發送。");
+      writeLog("郵件發送", "INFO", "未偵測到收件人，系統自動切換為 [管理者個人追蹤模式] 發送。");
       
       var adminHtmlWrapper = '<div style="font-family: Arial, sans-serif; background-color: #e8f0fe; padding: 15px; border-radius: 6px; border: 1px solid #1a73e8; margin-bottom: 20px;">';
       adminHtmlWrapper += '<h3 style="color: #174ea6; margin-top: 0;">👑 MLB 台灣球員每日動態（管理者個人追蹤模式）</h3>';
@@ -180,15 +186,16 @@ function sendSummaryEmail(ss, isDaily) {
         subject: "⚾️ [個人追蹤] MLB 台灣球員每日動態與近五日出賽摘要報告",
         htmlBody: adminHtmlWrapper + htmlBody
       });
+      writeLog("郵件發送", "SUCCESS", "已成功發送個人追蹤報告給管理員");
       return;
     } else {
-      writeLog("WARN", "未偵測到任何收件人且無管理者信箱，取消發信。");
+      writeLog("郵件發送", "WARN", "未偵測到任何收件人且無管理者信箱，取消發信。");
       return;
     }
   }
   
   if (activeSendEmails.length === 0 && skippedWithErrorRecipients.length > 0) {
-    writeLog("WARN", "有用戶勾選發送，但因皆包含錯誤，發信程序被系統全數攔截。");
+    writeLog("郵件發送", "WARN", "有用戶勾選發送，但因皆包含錯誤，發信程序被系統全數攔截。");
     if (adminEmail) {
       var warnBody = "⚠️ 【MLB系統發信中斷警告】\n\n系統發現有用戶被勾選發送（模式: " + (isDaily ? "每日自動" : "手動測試") + "），但因其資料或信箱格式原本就存在錯誤，系統為確保安全已全數自動攔截，今日報告並未發送出去。\n\n請管理員撥冗回到試算表進行修正：\n\n【❌ 被系統攔截的錯誤名單】\n" + skippedWithErrorRecipients.join("\n");
       MailApp.sendEmail(adminEmail, "⚠️ [警告] MLB 報告發送中斷（名單內含格式錯誤）", warnBody);
@@ -210,7 +217,7 @@ function sendSummaryEmail(ss, isDaily) {
         recipientSheet.getRange(row, 2).setValue(false); 
       }
     });
-    writeLog("INFO", "摘要郵件已成功群發至 " + activeSendEmails.length + " 位收件人。");
+    writeLog("郵件發送", "SUCCESS", "摘要郵件已成功群發至 " + activeSendEmails.length + " 位收件人。");
     
     if (adminEmail) {
       var adminHtmlWrapper = '<div style="font-family: Arial, sans-serif; background-color: #f1f3f4; padding: 15px; border-radius: 6px; border: 1px solid #dadce0; margin-bottom: 20px;">';
@@ -238,7 +245,7 @@ function sendSummaryEmail(ss, isDaily) {
     }
     
   } catch(e) {
-    writeLog("ERROR", "郵件發送失敗: " + e.toString());
+    writeLog("郵件發送", "ERROR", "郵件發送失敗: " + e.toString());
     rowsToUpdate.forEach(function(row) {
       recipientSheet.getRange(row, 6).setValue("❌ 發送失敗").setFontColor("red");
     });
@@ -254,6 +261,7 @@ function sendSummaryEmail(ss, isDaily) {
  * ⚙️ 功能選單：初始化或重設管理中心
  */
 function setupEmailCenter() {
+  writeLog("系統設定", "START", "手動執行 [建立/重設郵件寄送管理中心]");
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheetName = "郵件寄送管理中心";
   var oldSheet = ss.getSheetByName(sheetName);
@@ -261,11 +269,15 @@ function setupEmailCenter() {
   
   if (oldSheet) {
     var response = ui.alert("重設確認", "偵測到已存在「" + sheetName + "」工作表。\n若執行重設，系統會刪除此分頁並重新建構全新的「雙核取方塊」架構（舊的名單將會消失）。是否確認重設？", ui.ButtonSet.YES_NO);
-    if (response !== ui.Button.YES) return;
+    if (response !== ui.Button.YES) {
+      writeLog("系統設定", "INFO", "使用者取消重設作業");
+      return;
+    }
     ss.deleteSheet(oldSheet);
   }
   
   initEmailCenterSheet(ss);
+  writeLog("系統設定", "SUCCESS", "郵件寄送管理中心全新建置完畢");
   ui.alert("✅ 「郵件寄送管理中心」已全新建置完畢！請切換至該分頁填寫設定。");
 }
 
@@ -402,7 +414,6 @@ function generateHtmlReport(ss) {
     var colDeltaCheck = deltaCols[checkField] || -1;
     
     if (colDeltaCheck !== -1 && sheet.getLastRow() > 1) {
-      // 💡 關鍵修正點：改用 getDisplayValues() 抓取「肉眼可見的格式化純字串」，避免被 Google Sheets 底層轉換數字干擾
       var dataRows = sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn()).getDisplayValues();
       var activePlayersHtml = "";
 
@@ -506,17 +517,18 @@ function updatePlayerStatsAction() {
   
   initLogSheet(ss);
   initHistorySheet(ss); 
-  writeLog("INFO", "=== 開始執行 [球員賽季數據] 更新程序 ===");
+  writeLog("手動操作", "START", "手動啟動 [球員賽季數據] 更新程序");
 
   sheetsToUpdate.forEach(function(sheetName) {
     var sheet = ss.getSheetByName(sheetName);
     if (sheet) {
       processStatSheet(sheet, sheetName);
     } else {
-      writeLog("WARN", "找不到分頁: " + sheetName + "，跳過。");
+      writeLog("數據更新", "WARN", "找不到分頁: " + sheetName + "，跳過該類型更新。");
     }
   });
 
+  writeLog("手動操作", "SUCCESS", "球員賽季數據手動更新完成");
   SpreadsheetApp.getUi().alert("⚾️ 球員賽季數據更新完成！詳細執行進程請見 「Log」 工作表。");
 }
 
@@ -524,6 +536,8 @@ function processStatSheet(sheet, type) {
   var ss = sheet.getParent();
   var lastRow = sheet.getLastRow();
   if (lastRow < 2) return;
+
+  writeLog("數據更新", "INFO", "開始處理 [" + type + "] 工作表資料...");
 
   var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
   var statFields = (type === "Pitcher") ? 
@@ -541,78 +555,96 @@ function processStatSheet(sheet, type) {
   var timeCol = colMap["最新數據異動時間"] || colMap["資料更新時間"];
   var todayStr = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd");
   var currentYear = new Date().getFullYear();
+  var successCount = 0;
+  var errorCount = 0;
 
   for (var row = 2; row <= lastRow; row++) {
-    var engName = String(sheet.getRange(row, colMap["英文名字"]).getValue()).trim();
-    if (!engName) continue;
+    var engName = "";
+    try {
+      engName = String(sheet.getRange(row, colMap["英文名字"]).getValue()).trim();
+      if (!engName) continue;
 
-    writeLog("INFO", "正在處理 [" + type + "] 球員: " + engName);
+      var playerId = colMap["Player ID"] ? String(sheet.getRange(row, colMap["Player ID"]).getValue()).trim() : "";
+      var milbUrl = colMap["MiLB頁面"] ? String(sheet.getRange(row, colMap["MiLB頁面"]).getValue()).trim() : "";
+      var mlbUrl = colMap["MLB頁面"] ? String(sheet.getRange(row, colMap["MLB頁面"]).getValue()).trim() : "";
 
-    var playerId = colMap["Player ID"] ? String(sheet.getRange(row, colMap["Player ID"]).getValue()).trim() : "";
-    var milbUrl = colMap["MiLB頁面"] ? String(sheet.getRange(row, colMap["MiLB頁面"]).getValue()).trim() : "";
-    var mlbUrl = colMap["MLB頁面"] ? String(sheet.getRange(row, colMap["MLB頁面"]).getValue()).trim() : "";
-
-    if (!playerId || !milbUrl || !mlbUrl) {
-      var apiResult = fetchPlayerIdFromAPI(engName);
-      if (apiResult) {
-        if (colMap["Player ID"]) sheet.getRange(row, colMap["Player ID"]).setValue(apiResult.id);
-        if (colMap["MiLB頁面"]) sheet.getRange(row, colMap["MiLB頁面"]).setValue(apiResult.milbUrl);
-        if (colMap["MLB頁面"]) sheet.getRange(row, colMap["MLB頁面"]).setValue(apiResult.mlbUrl);
-        milbUrl = apiResult.milbUrl; mlbUrl = apiResult.mlbUrl;
-      }
-    }
-
-    var teamLevel = colMap["球隊層級"] ? String(sheet.getRange(row, colMap["球隊層級"]).getValue()).trim() : "";
-    var targetUrl = milbUrl;
-    if (teamLevel.toUpperCase().indexOf("MLB") !== -1 || teamLevel.toUpperCase().indexOf("MAJOR") !== -1) {
-      if (mlbUrl && mlbUrl.indexOf("http") === 0) targetUrl = mlbUrl;
-    }
-    if (!targetUrl) continue;
-
-    var stats = scrapeDetailedStats(targetUrl, type, teamLevel, currentYear);
-    if (stats) {
-      for (var field in baseCols) {
-        if (stats[field] !== undefined) updateCellOnly(sheet, row, baseCols[field], stats[field]);
-      }
-      if (timeCol) sheet.getRange(row, timeCol).setValue(todayStr);
-
-      saveToHistorySheet(ss, todayStr, engName, type, stats);
-      var oldStats = getStatsFromHistory(ss, engName, type, todayStr);
-
-      var hasPlayed = true;
-      if (oldStats) {
-        if (type === "Pitcher") {
-          if (stats["G"] !== "今年賽季尚無出賽紀錄" && stats["G"] !== "—") {
-            var currentG = parseInt(stats["G"]) || 0;
-            var oldG = parseInt(oldStats["G"]) || 0;
-            if (currentG - oldG === 0) hasPlayed = false;
-          }
-        } else if (type === "Batter") {
-          if (stats["AB"] !== "今年賽季尚無出賽紀錄" && stats["AB"] !== "—") {
-            var currentAB = parseInt(stats["AB"]) || 0;
-            var oldAB = parseInt(oldStats["AB"]) || 0;
-            if (currentAB - oldAB === 0) hasPlayed = false;
-          }
-        }
-      } else { 
-        hasPlayed = null; 
-      }
-
-      for (var field in deltaCols) {
-        var deltaColIdx = deltaCols[field];
-        if (!deltaColIdx) continue;
-
-        if (hasPlayed === false || stats[field] === "今年賽季尚無出賽紀錄" || stats[field] === "—") {
-          applyDeltaColor(sheet, row, deltaColIdx, field, "No Game");
-        } else if (hasPlayed === null) {
-          applyDeltaColor(sheet, row, deltaColIdx, field, "累積中...");
+      if (!playerId || !milbUrl || !mlbUrl) {
+        var apiResult = fetchPlayerIdFromAPI(engName);
+        if (apiResult) {
+          if (colMap["Player ID"]) sheet.getRange(row, colMap["Player ID"]).setValue(apiResult.id);
+          if (colMap["MiLB頁面"]) sheet.getRange(row, colMap["MiLB頁面"]).setValue(apiResult.milbUrl);
+          if (colMap["MLB頁面"]) sheet.getRange(row, colMap["MLB頁面"]).setValue(apiResult.mlbUrl);
+          milbUrl = apiResult.milbUrl; mlbUrl = apiResult.mlbUrl;
         } else {
-          var deltaValue = calculateDelta(field, stats[field], oldStats[field]);
-          applyDeltaColor(sheet, row, deltaColIdx, field, deltaValue);
+          throw new Error("無法從 API 獲取 Player ID 或網址");
         }
       }
+
+      var teamLevel = colMap["球隊層級"] ? String(sheet.getRange(row, colMap["球隊層級"]).getValue()).trim() : "";
+      var targetUrl = milbUrl;
+      if (teamLevel.toUpperCase().indexOf("MLB") !== -1 || teamLevel.toUpperCase().indexOf("MAJOR") !== -1) {
+        if (mlbUrl && mlbUrl.indexOf("http") === 0) targetUrl = mlbUrl;
+      }
+      if (!targetUrl) throw new Error("無效的目標網址");
+
+      var stats = scrapeDetailedStats(targetUrl, type, teamLevel, currentYear);
+      if (stats) {
+        for (var field in baseCols) {
+          if (stats[field] !== undefined) updateCellOnly(sheet, row, baseCols[field], stats[field]);
+        }
+        if (timeCol) sheet.getRange(row, timeCol).setValue(todayStr);
+
+        saveToHistorySheet(ss, todayStr, engName, type, stats);
+        var oldStats = getStatsFromHistory(ss, engName, type, todayStr);
+
+        var hasPlayed = true;
+        if (oldStats) {
+          if (type === "Pitcher") {
+            if (stats["G"] !== "今年賽季尚無出賽紀錄" && stats["G"] !== "—") {
+              var currentG = parseInt(stats["G"]) || 0;
+              var oldG = parseInt(oldStats["G"]) || 0;
+              if (currentG - oldG === 0) hasPlayed = false;
+            }
+          } else if (type === "Batter") {
+            if (stats["AB"] !== "今年賽季尚無出賽紀錄" && stats["AB"] !== "—") {
+              var currentAB = parseInt(stats["AB"]) || 0;
+              var oldAB = parseInt(oldStats["AB"]) || 0;
+              if (currentAB - oldAB === 0) hasPlayed = false;
+            }
+          }
+        } else { 
+          hasPlayed = null; 
+        }
+
+        for (var field in deltaCols) {
+          var deltaColIdx = deltaCols[field];
+          if (!deltaColIdx) continue;
+
+          if (hasPlayed === false || stats[field] === "今年賽季尚無出賽紀錄" || stats[field] === "—") {
+            applyDeltaColor(sheet, row, deltaColIdx, field, "No Game");
+          } else if (hasPlayed === null) {
+            applyDeltaColor(sheet, row, deltaColIdx, field, "累積中...");
+          } else {
+            var deltaValue = calculateDelta(field, stats[field], oldStats[field]);
+            applyDeltaColor(sheet, row, deltaColIdx, field, deltaValue);
+          }
+        }
+        successCount++;
+      } else {
+        throw new Error("爬取網頁數據回傳為空或失敗");
+      }
+      Utilities.sleep(400); 
+
+    } catch (err) {
+      errorCount++;
+      writeLog("數據更新", "ERROR", "[" + type + "] 球員 " + (engName || "第"+row+"列") + " 發生錯誤: " + err.message);
     }
-    Utilities.sleep(400); 
+  }
+  
+  if(errorCount > 0) {
+    writeLog("數據更新", "WARN", "[" + type + "] 工作表處理完畢。成功: " + successCount + " 人，失敗: " + errorCount + " 人");
+  } else {
+    writeLog("數據更新", "SUCCESS", "[" + type + "] 工作表處理完畢。成功更新 " + successCount + " 位球員數據。");
   }
 }
 
@@ -662,9 +694,6 @@ function calcIPDiff(curr, old) {
   return (parseFloat(fullDiff + "." + partDiff) * sign).toFixed(1);
 }
 
-/**
- * 💡 關鍵修正點：強制將儲存格設定為純文字格式
- */
 function applyDeltaColor(sheet, row, col, field, deltaValStr) {
   var cell = sheet.getRange(row, col);
 
@@ -771,71 +800,111 @@ function updateCellAndHighlight(sheet, row, col, newValue, todayStr) {
   if (String(newValue).trim() !== String(cell.getValue()).trim()) { cell.setValue(newValue); cell.setBackground("#FFFF00"); }
 }
 
-function updateAll() { executeCoreUpdate(SpreadsheetApp.getActiveSpreadsheet().getActiveSheet().getName(), "ALL", "所有資訊"); }
-function updateTransactions() { executeCoreUpdate(SpreadsheetApp.getActiveSpreadsheet().getActiveSheet().getName(), "TRANSACTIONS", "最新異動"); }
-function updateStatusAndTeam() { executeCoreUpdate(SpreadsheetApp.getActiveSpreadsheet().getActiveSheet().getName(), "STATUS", "狀態與球隊"); }
+function updateAll() { 
+  writeLog("手動操作", "START", "手動啟動 [一鍵更新基本資訊]");
+  executeCoreUpdate(SpreadsheetApp.getActiveSpreadsheet().getActiveSheet().getName(), "ALL", "所有資訊"); 
+  writeLog("手動操作", "SUCCESS", "[一鍵更新基本資訊] 執行完畢");
+}
+
+function updateTransactions() { 
+  writeLog("手動操作", "START", "手動啟動 [局部更新：最新異動]");
+  executeCoreUpdate(SpreadsheetApp.getActiveSpreadsheet().getActiveSheet().getName(), "TRANSACTIONS", "最新異動"); 
+  writeLog("手動操作", "SUCCESS", "[局部更新：最新異動] 執行完畢");
+}
+
+function updateStatusAndTeam() { 
+  writeLog("手動操作", "START", "手動啟動 [局部更新：狀態與球隊]");
+  executeCoreUpdate(SpreadsheetApp.getActiveSpreadsheet().getActiveSheet().getName(), "STATUS", "狀態與球隊"); 
+  writeLog("手動操作", "SUCCESS", "[局部更新：狀態與球隊] 執行完畢");
+}
 
 function executeCoreUpdate(sheetName, mode, processName) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName(sheetName);
-  if (!sheet || sheet.getLastRow() < 2) return;
+  if (!sheet || sheet.getLastRow() < 2) {
+    writeLog("基本資訊更新", "WARN", "找不到分頁 " + sheetName + " 或是該分頁無資料");
+    return;
+  }
+  
+  writeLog("基本資訊更新", "INFO", "開始執行 [" + processName + "] 更新作業...");
   
   var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
   var colMap = {}; headers.forEach((h, i) => colMap[h.trim()] = i + 1);
   var todayStr = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd");
+  var successCount = 0;
+  var errorCount = 0;
 
   for (var rowIdx = 2; rowIdx <= sheet.getLastRow(); rowIdx++) {
-    var englishName = String(sheet.getRange(rowIdx, colMap["英文名字"]).getValue()).trim();
-    if (!englishName) continue;
-    var milbUrl = colMap["MiLB頁面"] ? String(sheet.getRange(rowIdx, colMap["MiLB頁面"]).getValue()).trim() : "";
-    
-    var currentId = String(sheet.getRange(rowIdx, colMap["Player ID"]).getValue()).trim();
-    if ((!milbUrl || !currentId) && colMap["Player ID"]) {
-      var apiResult = fetchPlayerIdFromAPI(englishName);
-      if (apiResult) {
-        sheet.getRange(rowIdx, colMap["Player ID"]).setValue(apiResult.id);
-        if (colMap["MiLB頁面"]) sheet.getRange(rowIdx, colMap["MiLB頁面"]).setValue(apiResult.milbUrl);
-        if (colMap["MLB頁面"]) sheet.getRange(rowIdx, colMap["MLB頁面"]).setValue(apiResult.mlbUrl);
-        milbUrl = apiResult.milbUrl;
-      }
-    }
-
-    if (milbUrl) {
-      var webData = scrapeMiLBPage(milbUrl);
-      if (webData) {
-        var dataFields = {};
-        if (mode === "ALL") {
-          dataFields = { "守備位置": webData.position, "目前年齡": webData.age, "目前狀態": webData.status, "所屬球隊": webData.currentTeam, "球隊層級": webData.teamLevel, "下一場比賽": webData.nextGame, "異動日期": webData.transactionDate, "異動內容": webData.transactionDesc };
-        } else if (mode === "TRANSACTIONS") {
-          dataFields = { "異動日期": webData.transactionDate, "異動內容": webData.transactionDesc };
-        } else if (mode === "STATUS") {
-          dataFields = { "目前狀態": webData.status, "所屬球隊": webData.currentTeam, "球隊層級": webData.teamLevel, "下一場比賽": webData.nextGame };
-        }
-
-        for (var fieldName in dataFields) { if (colMap[fieldName]) sheet.getRange(rowIdx, colMap[fieldName]).setBackground(null); }
-        if (dataFields["異動內容"] !== undefined && colMap["異動日期"]) sheet.getRange(rowIdx, colMap["異動日期"]).setBackground(null);
-
-        var levelKey = colMap["球隊層級"] ? "球隊層級" : (colMap["目前層級"] ? "目前層級" : null);
-        var hasStatusChanged = false, hasTeamChanged = false, hasLevelChanged = false;
-        if (colMap["目前狀態"]) { if (webData.status && String(webData.status).trim() !== String(sheet.getRange(rowIdx, colMap["目前狀態"]).getValue()).trim()) hasStatusChanged = true; }
-        if (colMap["所屬球隊"]) { if (webData.currentTeam && String(webData.currentTeam).trim() !== String(sheet.getRange(rowIdx, colMap["所屬球隊"]).getValue()).trim()) hasTeamChanged = true; }
-        if (levelKey) { if (webData.teamLevel && String(webData.teamLevel).trim() !== String(sheet.getRange(rowIdx, colMap[levelKey]).getValue()).trim()) hasLevelChanged = true; }
-
-        for (var fieldName in dataFields) { if (colMap[fieldName]) updateCellAndHighlight(sheet, rowIdx, colMap[fieldName], dataFields[fieldName], todayStr); }
-        if (colMap["資料更新時間"]) sheet.getRange(rowIdx, colMap["資料更新時間"]).setValue(todayStr);
-
-        if (dataFields["異動內容"] !== undefined && isWithinFiveDays(webData.transactionDate)) {
-          if (colMap["異動內容"]) sheet.getRange(rowIdx, colMap["異動內容"]).setBackground("#FFD2D2");
-          if (colMap["異動日期"]) sheet.getRange(rowIdx, colMap["異動日期"]).setBackground("#FFD2D2");
-        }
-        if (dataFields["目標狀態"] !== undefined || dataFields["目前狀態"] !== undefined) {
-          if (hasStatusChanged && (colMap["目前狀態"] || colMap["現狀/狀態"])) { var sKey = colMap["目前狀態"] ? "目前狀態" : "現狀/狀態"; sheet.getRange(rowIdx, colMap[sKey]).setBackground("#FFEA00"); }
-          if (hasTeamChanged && colMap["所屬球隊"]) sheet.getRange(rowIdx, colMap["所屬球隊"]).setBackground("#FFEA00");
-          if (hasLevelChanged && levelKey) sheet.getRange(rowIdx, colMap[levelKey]).setBackground("#FFEA00");
+    var englishName = "";
+    try {
+      englishName = String(sheet.getRange(rowIdx, colMap["英文名字"]).getValue()).trim();
+      if (!englishName) continue;
+      
+      var milbUrl = colMap["MiLB頁面"] ? String(sheet.getRange(rowIdx, colMap["MiLB頁面"]).getValue()).trim() : "";
+      var currentId = String(sheet.getRange(rowIdx, colMap["Player ID"]).getValue()).trim();
+      
+      if ((!milbUrl || !currentId) && colMap["Player ID"]) {
+        var apiResult = fetchPlayerIdFromAPI(englishName);
+        if (apiResult) {
+          sheet.getRange(rowIdx, colMap["Player ID"]).setValue(apiResult.id);
+          if (colMap["MiLB頁面"]) sheet.getRange(rowIdx, colMap["MiLB頁面"]).setValue(apiResult.milbUrl);
+          if (colMap["MLB頁面"]) sheet.getRange(rowIdx, colMap["MLB頁面"]).setValue(apiResult.mlbUrl);
+          milbUrl = apiResult.milbUrl;
+        } else {
+          throw new Error("無法從 API 獲取 Player ID 導致爬蟲中斷");
         }
       }
+
+      if (milbUrl) {
+        var webData = scrapeMiLBPage(milbUrl);
+        if (webData) {
+          var dataFields = {};
+          if (mode === "ALL") {
+            dataFields = { "守備位置": webData.position, "目前年齡": webData.age, "目前狀態": webData.status, "所屬球隊": webData.currentTeam, "球隊層級": webData.teamLevel, "下一場比賽": webData.nextGame, "異動日期": webData.transactionDate, "異動內容": webData.transactionDesc };
+          } else if (mode === "TRANSACTIONS") {
+            dataFields = { "異動日期": webData.transactionDate, "異動內容": webData.transactionDesc };
+          } else if (mode === "STATUS") {
+            dataFields = { "目前狀態": webData.status, "所屬球隊": webData.currentTeam, "球隊層級": webData.teamLevel, "下一場比賽": webData.nextGame };
+          }
+
+          for (var fieldName in dataFields) { if (colMap[fieldName]) sheet.getRange(rowIdx, colMap[fieldName]).setBackground(null); }
+          if (dataFields["異動內容"] !== undefined && colMap["異動日期"]) sheet.getRange(rowIdx, colMap["異動日期"]).setBackground(null);
+
+          var levelKey = colMap["球隊層級"] ? "球隊層級" : (colMap["目前層級"] ? "目前層級" : null);
+          var hasStatusChanged = false, hasTeamChanged = false, hasLevelChanged = false;
+          if (colMap["目前狀態"]) { if (webData.status && String(webData.status).trim() !== String(sheet.getRange(rowIdx, colMap["目前狀態"]).getValue()).trim()) hasStatusChanged = true; }
+          if (colMap["所屬球隊"]) { if (webData.currentTeam && String(webData.currentTeam).trim() !== String(sheet.getRange(rowIdx, colMap["所屬球隊"]).getValue()).trim()) hasTeamChanged = true; }
+          if (levelKey) { if (webData.teamLevel && String(webData.teamLevel).trim() !== String(sheet.getRange(rowIdx, colMap[levelKey]).getValue()).trim()) hasLevelChanged = true; }
+
+          for (var fieldName in dataFields) { if (colMap[fieldName]) updateCellAndHighlight(sheet, rowIdx, colMap[fieldName], dataFields[fieldName], todayStr); }
+          if (colMap["資料更新時間"]) sheet.getRange(rowIdx, colMap["資料更新時間"]).setValue(todayStr);
+
+          if (dataFields["異動內容"] !== undefined && isWithinFiveDays(webData.transactionDate)) {
+            if (colMap["異動內容"]) sheet.getRange(rowIdx, colMap["異動內容"]).setBackground("#FFD2D2");
+            if (colMap["異動日期"]) sheet.getRange(rowIdx, colMap["異動日期"]).setBackground("#FFD2D2");
+          }
+          if (dataFields["目標狀態"] !== undefined || dataFields["目前狀態"] !== undefined) {
+            if (hasStatusChanged && (colMap["目前狀態"] || colMap["現狀/狀態"])) { var sKey = colMap["目前狀態"] ? "目前狀態" : "現狀/狀態"; sheet.getRange(rowIdx, colMap[sKey]).setBackground("#FFEA00"); }
+            if (hasTeamChanged && colMap["所屬球隊"]) sheet.getRange(rowIdx, colMap["所屬球隊"]).setBackground("#FFEA00");
+            if (hasLevelChanged && levelKey) sheet.getRange(rowIdx, colMap[levelKey]).setBackground("#FFEA00");
+          }
+          successCount++;
+        } else {
+          throw new Error("網頁爬取回傳為空或連線失敗");
+        }
+      }
+      Utilities.sleep(300);
+      
+    } catch(err) {
+      errorCount++;
+      writeLog("基本資訊更新", "ERROR", "球員 " + (englishName || "第"+rowIdx+"列") + " 更新異常: " + err.message);
     }
-    Utilities.sleep(300);
+  }
+  
+  if (errorCount > 0) {
+    writeLog("基本資訊更新", "WARN", "[" + processName + "] 執行完畢。成功: " + successCount + " 人，失敗: " + errorCount + " 人");
+  } else {
+    writeLog("基本資訊更新", "SUCCESS", "[" + processName + "] 執行完畢。成功更新 " + successCount + " 位球員基本資訊。");
   }
 }
 
@@ -907,25 +976,81 @@ function scrapeMiLBPage(url) {
   } catch (e) { return null; }
 }
 
+// ==========================================================
+// 📖 系統日誌與排程控管核心 (易讀性升級版)
+// ==========================================================
+
 function initLogSheet(ss) {
   var logSheet = ss.getSheetByName("Log");
-  if (!logSheet) { logSheet = ss.insertSheet("Log"); logSheet.appendRow(["系統時間", "日誌等級", "詳細訊息"]); }
+  if (!logSheet) { 
+    logSheet = ss.insertSheet("Log"); 
+    logSheet.appendRow(["系統時間", "執行階段", "狀態", "詳細訊息"]); 
+    logSheet.getRange("A1:D1").setFontWeight("bold").setBackground("#f1f3f4").setHorizontalAlignment("center");
+    logSheet.setColumnWidth(1, 160);
+    logSheet.setColumnWidth(2, 120);
+    logSheet.setColumnWidth(3, 110);
+    logSheet.setColumnWidth(4, 500);
+    logSheet.setFrozenRows(1); // 凍結首列
+  }
 }
 
-function writeLog(level, message) {
-  var ss = SpreadsheetApp.getActiveSpreadsheet(); var logSheet = ss.getSheetByName("Log");
-  if (logSheet) { var timeStamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd HH:mm:ss"); logSheet.appendRow([timeStamp, level, message]); }
+/**
+ * 寫入 Log 紀錄 (支援最新紀錄在最上方，並具備色彩標示)
+ * @param {string} stage 執行的階段 (如: 總排程, 基本資訊更新, 數據更新)
+ * @param {string} status 狀態層級 (START, SUCCESS, INFO, WARN, ERROR)
+ * @param {string} message 詳細訊息
+ */
+function writeLog(stage, status, message) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet(); 
+  var logSheet = ss.getSheetByName("Log");
+  
+  if (logSheet) { 
+    var timeStamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd HH:mm:ss"); 
+    
+    var iconStatus = status;
+    var bgColor = null;
+    var fontColor = "#000000";
+    
+    // 依據狀態套用 Emoji 與底色，提升肉眼掃描效率
+    if (status === "START") { iconStatus = "🚀 START"; bgColor = "#f3f3f3"; }
+    else if (status === "SUCCESS") { iconStatus = "✅ SUCCESS"; bgColor = "#e6f4ea"; fontColor = "#0d652d"; }
+    else if (status === "INFO") { iconStatus = "🟢 INFO"; }
+    else if (status === "WARN") { iconStatus = "🟡 WARN"; bgColor = "#fef7e0"; fontColor = "#b06000"; }
+    else if (status === "ERROR") { iconStatus = "🔴 ERROR"; bgColor = "#fce8e6"; fontColor = "#c5221f"; fontWeight = "bold"; }
+    
+    // 💡 關鍵修正：將最新的一筆日誌「插入在第 2 列」，使用者打開 Log 不用往下滑就能看到最新進度
+    logSheet.insertRowAfter(1);
+    var targetRange = logSheet.getRange(2, 1, 1, 4);
+    targetRange.setValues([[timeStamp, stage, iconStatus, message]]);
+    targetRange.setHorizontalAlignment("left");
+    
+    // 設定顏色格式
+    if (bgColor) {
+      targetRange.setBackground(bgColor);
+      targetRange.setFontColor(fontColor);
+      if (status === "ERROR") targetRange.setFontWeight("bold");
+    }
+    
+    // 防呆：避免日誌無限膨脹導致 Google Sheets 變慢，保留最近 1000 筆
+    if (logSheet.getLastRow() > 1000) {
+      logSheet.deleteRows(1001, logSheet.getLastRow() - 1000);
+    }
+  }
 }
 
 function enableDailyTrigger() {
+  writeLog("系統設定", "START", "手動啟用 [每日早上 7 點自動更新與發信]");
   disableDailyTrigger();
   ScriptApp.newTrigger('performDailyAutomation').timeBased().everyDays(1).atHour(7).create();
+  writeLog("系統設定", "SUCCESS", "自動排程已啟用");
   SpreadsheetApp.getUi().alert("每日早上 7 點自動更新與信件摘要已啟用。");
 }
 
 function disableDailyTrigger() {
+  writeLog("系統設定", "START", "手動關閉 [自動更新排程]");
   var triggers = ScriptApp.getProjectTriggers();
   for (var i = 0; i < triggers.length; i++) {
     if (triggers[i].getHandlerFunction() === 'performDailyAutomation' || triggers[i].getHandlerFunction() === 'updateAll') ScriptApp.deleteTrigger(triggers[i]);
   }
+  writeLog("系統設定", "SUCCESS", "自動排程已全部關閉");
 }
